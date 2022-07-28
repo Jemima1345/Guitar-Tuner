@@ -1,0 +1,6 @@
+# Auto Generated files
+nbproject
+dist
+build
+.generated_files
+Makefile

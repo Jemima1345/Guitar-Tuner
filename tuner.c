@@ -5,14 +5,22 @@
  * Created on July 27, 2022, 11:30 PM
  */
 
+#define F_CPU 1000000UL
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 
 #define NUM_SAMPLE_PERIODS  10
 #define TIM1_CLK_FREQ       1000000 // 8MHZ/8 / 1
 #define NOTES_ARRAY_LEN     49
+
+#define SER               PORTD0
+#define NO_OUTPUT_EN      PORTD1
+#define SRCLK             PORTD3
+#define NO_SRCLR          PORTD4
 
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
@@ -33,12 +41,17 @@ volatile uint8_t num_overflows = 0;
 int main(int argc, char** argv) {
     
     /* set AIN0 and AIN1 as inputs */
-    DDRB &= (1 << DDB1)|(1 << DDB0);
+    DDRB &= ~(1 << DDB1)&~(1 << DDB0);
     
     /* gpio output for debugging*/
     PORTC |= (1 << PORTC5);
     DDRC |= (1 << DDC5);
     
+    /* set pins controlling shift registers as outputs */
+    DDRD |= (1 << DDD4)|(1 << DDD3)|(1 << DDD1)|(1 << DDD0);
+    PORTD |= (1 << NO_SRCLR);
+    PORTD &= ~(1 << NO_OUTPUT_EN)&~(1 << SRCLK)&~(1 << SER);
+
     /* enable analog comparator and interrupt */
     ACSR &= (1 << ACD);
     ACSR |= (1 << ACIE); 
@@ -49,23 +62,49 @@ int main(int argc, char** argv) {
      * In TCCR1B, clear ICNC1 to turn off the noise canceller, set CS10 since a 
      * prescaler of 1 is used, and clear ICES1 bit to 0 to trigger input 
      * capture on the falling edges of the analog comparator output signal. */
-    TCCR1A = 0;
-    TCCR1B &= ~(1 << ICNC1)|(1 << ICES1);
-    TCCR1B |= (1 << CS10);
-    
-    /* enable the timer 1 overflow and input capture interrupts */
-    TIMSK1 |= (1 << TOIE1);//|(1 << ICIE1);
+//    TCCR1A = 0;
+//    TCCR1B &= ~(1 << ICNC1)|(1 << ICES1);
+//    TCCR1B |= (1 << CS10);
+//    
+//    /* enable the timer 1 overflow and input capture interrupts */
+//    TIMSK1 |= (1 << TOIE1);//|(1 << ICIE1);
     
     /* enable global interrupts */
     sei();
     
     uint16_t plucked_note, closest_note;
+    uint16_t led_statuses = 0;
+    uint16_t led_status = 0;
+
+    /* If using msb to lsb, the LSB of led_statuses outputs to QA on shift register 1. 
+     * If using lsb to msb, the LSB of led_statuses outputs to QH on shift register 2. 
+     * The storage register is one clock pulse behind the shift register.
+     */
+    led_statuses = 0xF000;
     
+    for(uint8_t led_num=0; led_num < 16; led_num++){
+        led_status = led_statuses & (1 << led_num); //lsb to msb
+//        led_status = led_statuses & (0x8000 >> led_num); //msb to lsb
+        if(led_status != 0){
+           PORTD |= (1 << SER);
+        }else{
+           PORTD &= ~(1 << SER);
+        }
+        /* generate a pulse on SRCLK to update shift register */
+        PORTD |= (1 << SRCLK);
+        _delay_ms(1);
+        PORTD &= ~(1 << SRCLK);
+        _delay_ms(1);
+    }
+    // extra clock pulse to update storage register
+    PORTD |= (1 << SRCLK);
+    _delay_ms(1);
+    PORTD &= ~(1 << SRCLK);
+    _delay_ms(1);
     
     while(1){
-        
-        plucked_note = measure_frequency();
-        closest_note = find_closest_note(plucked_note);
+//        plucked_note = measure_frequency();
+//        closest_note = find_closest_note(plucked_note);
     }
     
     return (EXIT_SUCCESS);

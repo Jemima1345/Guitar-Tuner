@@ -24,7 +24,7 @@
 
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
-void find_closest_note(uint16_t plucked_note, uint16_t*closest_note, uint16_t*closest_note_idx);
+uint16_t find_closest_note(uint16_t);
 void update_leds(void);
 /*
  * 
@@ -76,16 +76,11 @@ int main(int argc, char** argv) {
 
 //    update_leds();
     
-    uint16_t plucked_note;
-    uint16_t *closest_note;
-    uint16_t *closest_note_idx;
+    uint16_t plucked_note, closest_note;
     while(1){
         plucked_note = measure_frequency();
-        find_closest_note(plucked_note, &closest_note, &closest_note_idx);
-        // closest_note
-        // if(closest_note_idx)
-        
-        
+        closest_note = find_closest_note(plucked_note);
+
         /* turn on led for closest note */
     }
     
@@ -152,14 +147,10 @@ uint16_t measure_frequency(void){
 
 }
 
-void find_closest_note(uint16_t plucked_note, uint16_t*closest_note, uint16_t*closest_note_idx){
-    
-    uint16_t top_note, bottom_note;
-    uint8_t dist_to_top, dist_to_bottom;
-    
-    top_note = bottom_note = dist_to_top = dist_to_bottom = 0;
-//    *closest_note = 0;
-//    *closest_note_idx = 0;
+uint16_t find_closest_note(uint16_t plucked_note){
+    uint16_t top_note, bottom_note, closest_note;
+    uint8_t dist_to_top, dist_to_bottom, closest_note_idx;
+    top_note = bottom_note = dist_to_top = dist_to_bottom = closest_note = 0;
     
     for(uint8_t note_index = 0; note_index < NOTES_ARRAY_LEN; note_index++){
         
@@ -171,18 +162,18 @@ void find_closest_note(uint16_t plucked_note, uint16_t*closest_note, uint16_t*cl
             dist_to_bottom = plucked_note - bottom_note;
             
             if(dist_to_bottom < dist_to_top){
-                *closest_note = bottom_note;
-                *closest_note_idx = note_index-1;
+                closest_note_idx = note_index-1;
+                return closest_note = bottom_note;
             }else {
                 /* if the plucked note is the same distance from the two nearest
                  * notes in the array, use the higher note as the closest */
-                *closest_note = top_note;
-                *closest_note_idx = note_index;
+                closest_note_idx = note_index;
+                return closest_note = top_note;
             }     
         }
     }
     // note played is higher than the max note in the array
-    *closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
+    return closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
 }
 
 void update_leds(void){

@@ -9,21 +9,21 @@
 //TODO: make some variables pointers or global instead of passing into functions
 
 volatile uint8_t num_overflows = 0;
-uint16_t led_statuses = 0;
+uint16_t led_statuses;
 uint16_t *pled_statuses = &led_statuses;
 
-void TIM16_WriteTCNT1(unsigned int i)
-{
-    unsigned char sreg;
-    /* Save global interrupt flag */
-    sreg = SREG;
-    /* Disable interrupts */
-    cli();
-    /* Set TCNT1 to i */
-    TCNT1 = i;
-    /* Restore global interrupt flag */
-    SREG = sreg;
-}
+//void TIM16_WriteTCNT1(unsigned int i)
+//{
+//    unsigned char sreg;
+//    /* Save global interrupt flag */
+//    sreg = SREG;
+//    /* Disable interrupts */
+//    cli();
+//    /* Set TCNT1 to i */
+//    TCNT1 = i;
+//    /* Restore global interrupt flag */
+//    SREG = sreg;
+//}
 
 int main(int argc, char** argv) {
 
@@ -33,13 +33,16 @@ int main(int argc, char** argv) {
 
     /* enable global interrupts */
     sei();
+    
+    /* turn off all the shift register leds */
+    *pled_statuses = 0;
+    update_leds();
 
-    uint16_t plucked_note, closest_note;
+    uint16_t plucked_note;
 
     while(1){
         plucked_note = measure_frequency();
-        closest_note = find_closest_note(plucked_note);
-        /* find note offset */
+        find_closest_note(plucked_note);
     }
     
     return (EXIT_SUCCESS);
@@ -161,6 +164,11 @@ uint16_t find_closest_note(uint16_t plucked_note)
     uint16_t top_note, bottom_note, closest_note;
     uint8_t dist_to_top, dist_to_bottom, closest_note_idx;
     top_note = bottom_note = dist_to_top = dist_to_bottom = 0;
+
+    //TODO: why does plucked_note = 1 sometimes?
+    if(plucked_note <= 1){
+        return; //error
+    }
     
     for(uint8_t note_index = 0; note_index < NOTES_ARRAY_LEN; note_index++){
         
@@ -175,7 +183,7 @@ uint16_t find_closest_note(uint16_t plucked_note)
                 closest_note_idx = note_index-1;
                 closest_note = bottom_note;
                 set_closest_note_led(closest_note_idx);
-                find_note_offset(plucked_note, closest_note, closest_note_idx);
+                set_note_offset_led(plucked_note, closest_note, closest_note_idx);
                 return closest_note;
             }else {
                 /* if the plucked note is the same distance from the two nearest
@@ -183,7 +191,7 @@ uint16_t find_closest_note(uint16_t plucked_note)
                 closest_note_idx = note_index;
                 closest_note = top_note;
                 set_closest_note_led(closest_note_idx);
-                find_note_offset(plucked_note, closest_note, closest_note_idx);
+                set_note_offset_led(plucked_note, closest_note, closest_note_idx);
                 return closest_note;
             }   
         }
@@ -191,7 +199,7 @@ uint16_t find_closest_note(uint16_t plucked_note)
     // note played is higher than the max note in the array
     closest_note_idx = NOTES_ARRAY_LEN-1;
     set_closest_note_led(closest_note_idx);
-    find_note_offset(plucked_note, closest_note, closest_note_idx);
+    set_note_offset_led(plucked_note, closest_note, closest_note_idx);
     closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
     return closest_note;    
 }
@@ -207,7 +215,7 @@ void set_closest_note_led(uint8_t closest_note_idx)
     update_leds();
 }
 
-void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx)
+void set_note_offset_led(uint16_t plucked_note, uint16_t closest_note, uint8_t closest_note_idx)
 {
     uint8_t above = 0;
     float step_size, offset;
@@ -229,9 +237,13 @@ void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t clo
 
     if(offset < 0.5f*DEADBAND){
         GREEN_LED_PORT |= (1 << GREEN_LED);
+        /* turn off the red offset indicator leds */
+        *pled_statuses &= 0x0FFF; //TODO: don't hardcode bitmask
+        update_leds();
     }else{
         GREEN_LED_PORT &= ~(1 << GREEN_LED);
         uint8_t led;
+        //TODO: rewrite this code to be shorter
         if(offset < step_size){
             if(above){
                 led = SHARP_X1;

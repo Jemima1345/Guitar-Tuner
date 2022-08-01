@@ -40,7 +40,7 @@ void init_input_capture(void);
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
 uint16_t find_closest_note(uint16_t);
-void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx);
+void set_note_offset_led(uint16_t plucked_note, uint16_t closest_note, uint8_t closest_note_idx);
 void set_closest_note_led(uint8_t);
 void update_leds();
 

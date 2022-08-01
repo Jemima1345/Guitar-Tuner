@@ -9,6 +9,8 @@
 //TODO: make some variables pointers or global instead of passing into functions
 
 volatile uint8_t num_overflows = 0;
+uint16_t led_statuses = 0;
+uint16_t *pled_statuses = &led_statuses;
 
 void TIM16_WriteTCNT1(unsigned int i)
 {
@@ -33,11 +35,10 @@ int main(int argc, char** argv) {
     sei();
 
     uint16_t plucked_note, closest_note;
-    uint16_t led_statuses = 0;
 
     while(1){
         plucked_note = measure_frequency();
-        closest_note = find_closest_note(plucked_note, led_statuses);
+        closest_note = find_closest_note(plucked_note);
         /* find note offset */
     }
     
@@ -155,7 +156,7 @@ uint16_t measure_frequency(void)
     return note_freq = (uint16_t)(TIM1_CLK_FREQ/period_count)+1; 
 }
 
-uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses)
+uint16_t find_closest_note(uint16_t plucked_note)
 {
     uint16_t top_note, bottom_note, closest_note;
     uint8_t dist_to_top, dist_to_bottom, closest_note_idx;
@@ -173,40 +174,40 @@ uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses)
             if(dist_to_bottom < dist_to_top){
                 closest_note_idx = note_index-1;
                 closest_note = bottom_note;
-                set_closest_note_led(closest_note_idx, led_statuses);
-                find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
+                set_closest_note_led(closest_note_idx);
+                find_note_offset(plucked_note, closest_note, closest_note_idx);
                 return closest_note;
             }else {
                 /* if the plucked note is the same distance from the two nearest
                  * notes in the array, use the higher note as the closest */
                 closest_note_idx = note_index;
                 closest_note = top_note;
-                set_closest_note_led(closest_note_idx, led_statuses);
-                find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
+                set_closest_note_led(closest_note_idx);
+                find_note_offset(plucked_note, closest_note, closest_note_idx);
                 return closest_note;
             }   
         }
     }
     // note played is higher than the max note in the array
     closest_note_idx = NOTES_ARRAY_LEN-1;
-    set_closest_note_led(closest_note_idx, led_statuses);
-    find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
+    set_closest_note_led(closest_note_idx);
+    find_note_offset(plucked_note, closest_note, closest_note_idx);
     closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
     return closest_note;    
 }
 
-void set_closest_note_led(uint8_t closest_note_idx, uint16_t led_statuses)
+void set_closest_note_led(uint8_t closest_note_idx)
 {
     Leds_t led;
     led = closest_note_idx % 12; // corresponds to notes A to G#
     /* clear the note indicator LEDs but keep the offset indicator LEDs the same */
-    led_statuses &= 0xF000;
+    *pled_statuses &= 0xF000;
     /* set the led for the closest note */
-    led_statuses |= (1 << led); 
-    update_leds(led_statuses);
+    *pled_statuses |= (1 << led); 
+    update_leds();
 }
 
-void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx, uint16_t led_statuses)
+void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx)
 {
     uint8_t above = 0;
     float step_size, offset;
@@ -245,15 +246,15 @@ void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t clo
             }
         }
         /* clear the offset leds but keep the note indicator leds the same */
-        led_statuses &= 0x0FFF;
-        led_statuses |= (1 << led);
-        update_leds(led_statuses);
+        *pled_statuses &= 0x0FFF;
+        *pled_statuses |= (1 << led);
+        update_leds();
     }
 }
 /**
  * updates the relevant LEDs using the shift registers
  */
-void update_leds(uint16_t led_statuses)
+void update_leds()
 {
      /* If using msb to lsb, the LSB of led_statuses outputs to QA on shift register 1. 
      * If using lsb to msb, the LSB of led_statuses outputs to QH on shift register 2. 
@@ -262,8 +263,8 @@ void update_leds(uint16_t led_statuses)
     uint16_t led_status = 0;
     
     for(uint8_t led_num=0; led_num < 16; led_num++){
-        led_status = led_statuses & (1 << led_num); //lsb to msb
-//        led_status = led_statuses & (0x8000 >> led_num); //msb to lsb
+        led_status = *pled_statuses & (1 << led_num); //lsb to msb
+//        led_status = *pled_statuses & (0x8000 >> led_num); //msb to lsb
         if(led_status != 0){
            PORTD |= (1 << SER);
         }else{

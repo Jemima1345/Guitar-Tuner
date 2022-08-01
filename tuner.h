@@ -39,10 +39,10 @@ void init_analog_comparator(void);
 void init_input_capture(void);
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
-uint16_t find_closest_note(uint16_t, uint16_t);
-void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx, uint16_t led_statuses);
-void set_closest_note_led(uint8_t, uint16_t);
-void update_leds(uint16_t);
+uint16_t find_closest_note(uint16_t);
+void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx);
+void set_closest_note_led(uint8_t);
+void update_leds();
 
 
 const uint16_t notes_array[] = {27.5,29.14,30.87,32.7,34.65,36.71,38.89,41.2,43.65,

@@ -19,13 +19,15 @@
 
 #define SER               PORTD0
 #define NO_OUTPUT_EN      PORTD1
+#define RCLK              PORTD2
 #define SRCLK             PORTD3
 #define NO_SRCLR          PORTD4
 
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
-uint16_t find_closest_note(uint16_t);
-void update_leds(void);
+uint16_t find_closest_note(uint16_t, uint16_t led_statuses);
+void set_closest_note_led(uint8_t, uint16_t);
+void update_leds(uint16_t);
 /*
  * 
  */
@@ -35,6 +37,26 @@ const uint16_t notes_array[] = {27.5,29.14,30.87,32.7,34.65,36.71,38.89,41.2,43.
                        138.59,146.83,155.56,164.81,174.61,185,196,207.65,220,
                        233.08,246.94,261.63,277.18,293.66,311.13,329.63,349.23,
                        369.99,392,415.3,440}; //TODO: change to float
+
+typedef enum{ //lsb to msb
+    /* 16 LEDs controlled by the shift register */
+    A, //lsbit
+    A_SHARP,
+    B,
+    C,
+    C_SHARP,
+    D,
+    D_SHARP,
+    E,
+    F,
+    F_SHARP,
+    G,
+    G_SHARP, 
+    FLAT_X2,
+    FLAT_X1,
+    SHARP_X1,
+    SHARP_X2 //msbit
+}Leds_t;
 
 volatile uint8_t num_overflows = 0;
 
@@ -48,7 +70,7 @@ int main(int argc, char** argv) {
     DDRC |= (1 << DDC5);
     
     /* set pins controlling shift registers as outputs */
-    DDRD |= (1 << DDD4)|(1 << DDD3)|(1 << DDD1)|(1 << DDD0);
+    DDRD |= (1 << DDD4)|(1 << DDD3)|(1 << DDD2)|(1 << DDD1)|(1 << DDD0);
     PORTD |= (1 << NO_SRCLR);
     PORTD &= ~(1 << NO_OUTPUT_EN)&~(1 << SRCLK)&~(1 << SER);
 
@@ -71,15 +93,13 @@ int main(int argc, char** argv) {
     
     /* enable global interrupts */
     sei();
-    
-   
 
-//    update_leds();
     
     uint16_t plucked_note, closest_note;
+    uint16_t led_statuses = 0;
     while(1){
         plucked_note = measure_frequency();
-        closest_note = find_closest_note(plucked_note);
+        closest_note = find_closest_note(plucked_note, led_statuses);
 
         /* turn on led for closest note */
     }
@@ -147,10 +167,11 @@ uint16_t measure_frequency(void){
 
 }
 
-uint16_t find_closest_note(uint16_t plucked_note){
+uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses){
+    
     uint16_t top_note, bottom_note, closest_note;
     uint8_t dist_to_top, dist_to_bottom, closest_note_idx;
-    top_note = bottom_note = dist_to_top = dist_to_bottom = closest_note = 0;
+    top_note = bottom_note = dist_to_top = dist_to_bottom = 0;
     
     for(uint8_t note_index = 0; note_index < NOTES_ARRAY_LEN; note_index++){
         
@@ -163,27 +184,46 @@ uint16_t find_closest_note(uint16_t plucked_note){
             
             if(dist_to_bottom < dist_to_top){
                 closest_note_idx = note_index-1;
-                return closest_note = bottom_note;
+                set_closest_note_led(closest_note_idx, led_statuses);
+                closest_note = bottom_note;
+                return closest_note;
             }else {
                 /* if the plucked note is the same distance from the two nearest
                  * notes in the array, use the higher note as the closest */
                 closest_note_idx = note_index;
-                return closest_note = top_note;
-            }     
+                set_closest_note_led(closest_note_idx, led_statuses);
+                closest_note = top_note;
+                return closest_note;
+            }   
         }
     }
     // note played is higher than the max note in the array
-    return closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
+    closest_note_idx = NOTES_ARRAY_LEN-1;
+    set_closest_note_led(closest_note_idx, led_statuses);
+    closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
+    return closest_note;    
 }
 
-void update_leds(void){
+void set_closest_note_led(uint8_t closest_note_idx, uint16_t led_statuses){
+   
+    Leds_t led;
+    led = closest_note_idx % 12; // corresponds to notes A to G#
+    /* clear the note indicator LEDs but keep the offset indicator LEDs the same */
+    led_statuses &= 0xF000;
+    /* set the led for the closest note */
+    led_statuses |= (1 << led); 
+    update_leds(led_statuses);
+}
+
+/**
+ * updates the relevant LEDs using the shift registers
+ */
+void update_leds(uint16_t led_statuses){
      /* If using msb to lsb, the LSB of led_statuses outputs to QA on shift register 1. 
      * If using lsb to msb, the LSB of led_statuses outputs to QH on shift register 2. 
      * The storage register is one clock pulse behind the shift register.
      */
-    uint16_t led_statuses = 0;
     uint16_t led_status = 0;
-    led_statuses = 0x0000;
     
     for(uint8_t led_num=0; led_num < 16; led_num++){
         led_status = led_statuses & (1 << led_num); //lsb to msb
@@ -200,8 +240,8 @@ void update_leds(void){
         _delay_ms(1);
     }
     // extra clock pulse to update storage register
-    PORTD |= (1 << SRCLK);
+    PORTD |= (1 << RCLK);
     _delay_ms(1);
-    PORTD &= ~(1 << SRCLK);
+    PORTD &= ~(1 << RCLK);
     _delay_ms(1);
 }

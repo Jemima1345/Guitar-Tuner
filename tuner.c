@@ -6,8 +6,22 @@
  */
 
 #include "tuner.h"
+//TODO: make some variables pointers or global instead of passing into functions
 
 volatile uint8_t num_overflows = 0;
+
+void TIM16_WriteTCNT1(unsigned int i)
+{
+    unsigned char sreg;
+    /* Save global interrupt flag */
+    sreg = SREG;
+    /* Disable interrupts */
+    cli();
+    /* Set TCNT1 to i */
+    TCNT1 = i;
+    /* Restore global interrupt flag */
+    SREG = sreg;
+}
 
 int main(int argc, char** argv) {
 
@@ -60,6 +74,10 @@ void init_gpios(void){
     DDRD |= (1 << DDD4)|(1 << DDD3)|(1 << DDD2)|(1 << DDD1)|(1 << DDD0);
     PORTD |= (1 << NO_SRCLR);
     PORTD &= ~(1 << NO_OUTPUT_EN)&~(1 << SRCLK)&~(1 << SER);
+
+    /* make the green led an output */
+    GREEN_LED_PORT &= ~(1 << GREEN_LED);
+    DDRB |= (1 << DDB6); //TODO: define in tuner.h
 }
 
 /**
@@ -70,6 +88,7 @@ void init_analog_comparator(void)
     ACSR &= (1 << ACD);
     ACSR |= (1 << ACIE); 
     ACSR |= (1 << ACIC); //input capture enable from comparator
+    //TODO: select ACIS0 and ACIS1 values to determine interrupt edge
 }
 
 void init_input_capture(void)
@@ -109,10 +128,13 @@ uint16_t measure_frequency(void)
     uint8_t num_periods = 0;
     num_overflows = 0;
     
+//    TIM16_WriteTCNT1(0);
+//    TCNT1 = 0;
+    
     /* wait for input capture flag to be set */
     while(!(TIFR1 & (1 << ICF1))){};
     t_start = get_timer_count();
-    /* clear the ICF1 flag */
+    /* clear the ICF1 flag by setting it to 1 */
     TIFR1 |= (1 << ICF1);   
     
     while(num_periods < NUM_SAMPLE_PERIODS){
@@ -123,10 +145,14 @@ uint16_t measure_frequency(void)
     t_end = get_timer_count();
     TIFR1 |= (1 << ICF1);
     
+//    if(t_end < t_start){
+//        num_overflows++;
+//    }
+    
     period_count = (uint32_t)(65536*num_overflows + t_end - t_start);
     
-    //TODO: use float for more accuracy
-    return note_freq = (uint16_t)(TIM1_CLK_FREQ/period_count); 
+    //TODO: use float for more accuracy. hardcoded +1 for now for more accuracy 
+    return note_freq = (uint16_t)(TIM1_CLK_FREQ/period_count)+1; 
 }
 
 uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses)
@@ -146,15 +172,17 @@ uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses)
             
             if(dist_to_bottom < dist_to_top){
                 closest_note_idx = note_index-1;
-                set_closest_note_led(closest_note_idx, led_statuses);
                 closest_note = bottom_note;
+                set_closest_note_led(closest_note_idx, led_statuses);
+                find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
                 return closest_note;
             }else {
                 /* if the plucked note is the same distance from the two nearest
                  * notes in the array, use the higher note as the closest */
                 closest_note_idx = note_index;
-                set_closest_note_led(closest_note_idx, led_statuses);
                 closest_note = top_note;
+                set_closest_note_led(closest_note_idx, led_statuses);
+                find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
                 return closest_note;
             }   
         }
@@ -162,6 +190,7 @@ uint16_t find_closest_note(uint16_t plucked_note, uint16_t led_statuses)
     // note played is higher than the max note in the array
     closest_note_idx = NOTES_ARRAY_LEN-1;
     set_closest_note_led(closest_note_idx, led_statuses);
+    find_note_offset(plucked_note, closest_note, closest_note_idx, led_statuses);
     closest_note = notes_array[NOTES_ARRAY_LEN-1]; 
     return closest_note;    
 }
@@ -177,6 +206,50 @@ void set_closest_note_led(uint8_t closest_note_idx, uint16_t led_statuses)
     update_leds(led_statuses);
 }
 
+void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx, uint16_t led_statuses)
+{
+    uint8_t above = 0;
+    float step_size, offset;
+    // above = (plucked_note > closest_note) ? 1 : 0;
+
+    if(plucked_note > closest_note){
+        above = 1;
+        //TODO: use floats
+        step_size = (notes_array[closest_note_idx+1] - closest_note)/3;
+        offset = plucked_note - closest_note;
+    }else if(plucked_note <= closest_note){
+        above = 0;
+        step_size = (closest_note - notes_array[closest_note_idx-1])/3;
+        offset = closest_note - plucked_note;
+    }
+    // else{
+        // GREEN_LED_PORT |= (1 << GREEN_LED);
+    // }
+
+    if(offset < 0.5f*DEADBAND){
+        GREEN_LED_PORT |= (1 << GREEN_LED);
+    }else{
+        GREEN_LED_PORT &= ~(1 << GREEN_LED);
+        uint8_t led;
+        if(offset < step_size){
+            if(above){
+                led = SHARP_X1;
+            }else{
+                led = FLAT_X1;
+            }
+        }else{
+            if(above){
+                led = SHARP_X2;
+            }else{
+                led = FLAT_X2;
+            }
+        }
+        /* clear the offset leds but keep the note indicator leds the same */
+        led_statuses &= 0x0FFF;
+        led_statuses |= (1 << led);
+        update_leds(led_statuses);
+    }
+}
 /**
  * updates the relevant LEDs using the shift registers
  */

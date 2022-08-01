@@ -21,10 +21,13 @@ extern "C" {
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
+#define DEADBAND            1
 #define NUM_SAMPLE_PERIODS  10
 #define TIM1_CLK_FREQ       1000000 // 8MHZ/8 / 1
 #define NOTES_ARRAY_LEN     49
 
+#define GREEN_LED         PORTB6
+#define GREEN_LED_PORT    PORTB
 #define SER               PORTD0
 #define NO_OUTPUT_EN      PORTD1
 #define RCLK              PORTD2
@@ -37,6 +40,7 @@ void init_input_capture(void);
 uint16_t get_timer_count(void);
 uint16_t measure_frequency(void);
 uint16_t find_closest_note(uint16_t, uint16_t);
+void find_note_offset(uint16_t plucked_note, uint16_t closest_note, uint16_t closest_note_idx, uint16_t led_statuses);
 void set_closest_note_led(uint8_t, uint16_t);
 void update_leds(uint16_t);
 
